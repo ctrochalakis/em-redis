@@ -10,7 +10,6 @@ module EventMachine
       # constants
       #########################
 
-      OK      = "OK".freeze
       MINUS    = "-".freeze
       PLUS     = "+".freeze
       COLON    = ":".freeze
@@ -34,17 +33,25 @@ module EventMachine
         "zadd"      => true,
         "zincrby"   => true,
         "zrem"      => true,
-        "zscore"    => true
+        "zscore"    => true,
+        "zrank"     => true,
+        "zrevrank"  => true,
+        "hget"      => true,
+        "hdel"      => true,
+        "hexists"   => true,
+        "publish"   => true
       }
 
       MULTI_BULK_COMMANDS = {
         "mset"      => true,
         "msetnx"    => true,
+        "hset"      => true,
+        "hmset"     => true,
         # these aliases aren't in redis gem
         "multi_get" => true
       }
 
-      BOOLEAN_PROCESSOR = lambda{|r| %w(1 OK).include? r.to_s }
+      BOOLEAN_PROCESSOR = lambda{|r| r == 1 }
 
       REPLY_PROCESSOR = {
         "exists"    => BOOLEAN_PROCESSOR,
@@ -59,15 +66,32 @@ module EventMachine
         "del"       => BOOLEAN_PROCESSOR,
         "renamenx"  => BOOLEAN_PROCESSOR,
         "expire"    => BOOLEAN_PROCESSOR,
+        "hset"      => BOOLEAN_PROCESSOR,
+        "hexists"   => BOOLEAN_PROCESSOR,
         "select"    => BOOLEAN_PROCESSOR, # not in redis gem
-        "keys"      => lambda{|r| r.split(" ")},
         "info"      => lambda{|r|
-          info = {}
+          info = Hash.new do |hash, key|
+            if hash.include?(key.to_s)
+              Redis.deprecate "Redis#info will return a hash of string keys, not symbols", caller[2]
+              hash[key.to_s]
+            end
+          end
+
           r.each_line {|kv|
             k,v = kv.split(":",2).map{|x| x.chomp}
-            info[k.to_sym] = v
+            info[k] = v
           }
           info
+        },
+        "keys"      => lambda{|r|
+          if r.is_a?(Array)
+            r
+          else
+            r.split(" ")
+          end
+        },
+        "hgetall"   => lambda{|r|
+          Hash[*r]
         }
       }
 
